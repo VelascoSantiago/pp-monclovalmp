@@ -18,3 +18,8 @@ pp-ds-monclovalmp = "pp_ds_monclovalmp:main"
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+]
