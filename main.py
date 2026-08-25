@@ -6,6 +6,7 @@ import requests as rq
 from datetime import date, timedelta
 from sklearn.ensemble import IsolationForest
 import plotly.graph_objects as go
+import plotly.express as px
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -91,41 +92,144 @@ def getIQR(df_nodo: pd.DataFrame) -> pd.DataFrame:
 # --- 2. MÓDULO DE REPORTING ---
 
 def generate_dashboard(df: pd.DataFrame, output_path: str) -> None:
-    """Genera un dashboard HTML interactivo con menú desplegable por nodo."""
+    """Genera un dashboard HTML interactivo con vista global promediada y detalle por nodo."""
     fig = go.Figure()
     nodos = df['nodo'].unique()
     
+    # --- 1. CONSTRUIR LA VISTA GLOBAL (PROMEDIO DE LA RED) ---
+    # Agrupamos por hora para sacar el precio promedio y si hubo alguna alerta en la red
+    df_global = df.groupby('fecha_hora').agg({
+        'pml': 'mean',
+        'alerta_critica': 'max'  # Si cualquier nodo tiene 1, el max será 1
+    }).reset_index()
+
+    # Trazo 0: Línea Promedio Global
+    fig.add_trace(go.Scatter(
+        x=df_global['fecha_hora'], y=df_global['pml'], mode='lines', 
+        name='Promedio Red Monclova', line=dict(color='gray', width=1.5), 
+        visible=True
+    ))
+    
+    # Trazo 1: Alertas Críticas Globales
+    criticas_globales = df_global[df_global['alerta_critica'] == 1]
+    fig.add_trace(go.Scatter(
+        x=criticas_globales['fecha_hora'], y=criticas_globales['pml'], mode='markers', 
+        name='Alerta Crítica (Red)', 
+        marker=dict(color='red', size=8, line=dict(width=1, color='black')), 
+        visible=True
+    ))
+
+    # --- 2. CONSTRUIR LAS VISTAS DE DETALLE POR NODO ---
+    traces_per_node = 5
+    
     for nodo in nodos:
         df_n = df[df['nodo'] == nodo]
+        
+        # Base PML
         fig.add_trace(go.Scatter(
             x=df_n['fecha_hora'], y=df_n['pml'], mode='lines', 
-            name=f'{nodo} - PML', line=dict(color='lightgray'), 
-            visible=(nodo == nodos[0])
+            name=f'{nodo} - PML', line=dict(color='lightgray', width=1), visible=False
         ))
+        # Z-Score
+        z_data = df_n[df_n['anom_zscore'] == 1]
+        fig.add_trace(go.Scatter(
+            x=z_data['fecha_hora'], y=z_data['pml'], mode='markers', 
+            name=f'{nodo} - Z-Score', marker=dict(color='orange', size=5), visible=False
+        ))
+        # Isolation Forest
+        if_data = df_n[df_n['anom_isotree'] == 1]
+        fig.add_trace(go.Scatter(
+            x=if_data['fecha_hora'], y=if_data['pml'], mode='markers', 
+            name=f'{nodo} - I-Forest', marker=dict(color='blue', size=5), visible=False
+        ))
+        # IQR
+        iqr_data = df_n[df_n['anom_iqr'] == 1]
+        fig.add_trace(go.Scatter(
+            x=iqr_data['fecha_hora'], y=iqr_data['pml'], mode='markers', 
+            name=f'{nodo} - IQR', marker=dict(color='green', size=5), visible=False
+        ))
+        # Críticas
         criticas = df_n[df_n['alerta_critica'] == 1]
         fig.add_trace(go.Scatter(
             x=criticas['fecha_hora'], y=criticas['pml'], mode='markers', 
-            name=f'{nodo} - Alerta', marker=dict(color='red', size=8, line=dict(width=1, color='black')), 
-            visible=(nodo == nodos[0])
+            name=f'{nodo} - Crítica (2+)', 
+            marker=dict(color='red', size=8, line=dict(width=1, color='black')), visible=False 
         ))
 
+    # --- 3. LÓGICA DEL MENÚ DESPLEGABLE ---
     buttons = []
+    total_traces = 2 + (len(nodos) * traces_per_node)
+
+    # Botón de Vista Global (Enciende solo los Trazos 0 y 1)
+    vis_global = [True, True] + [False] * (len(nodos) * traces_per_node)
+    buttons.append(dict(
+        label="Vista Global (Promedio)", 
+        method="update", 
+        args=[{"visible": vis_global}, {"title": "Promedio PML y Alertas - Zona de Carga Monclova"}]
+    ))
+
+    # Botones por nodo
     for i, nodo in enumerate(nodos):
-        visibility = [False] * (len(nodos) * 2)
-        visibility[i*2] = True
-        visibility[i*2+1] = True
+        visibility = [False] * total_traces
+        # Encender los 5 trazos del nodo seleccionado (dejando apagados los 2 globales del inicio)
+        for j in range(traces_per_node):
+            visibility[2 + (i * traces_per_node) + j] = True
+            
         buttons.append(dict(
-            label=nodo, method="update", 
-            args=[{"visible": visibility}, {"title": f"Alertas Críticas PML - Nodo {nodo}"}]
+            label=f"Detalle: {nodo}", 
+            method="update", 
+            args=[{"visible": visibility}, {"title": f"Desglose del Tridente Analítico - Nodo {nodo}"}]
         ))
         
     fig.update_layout(
-        updatemenus=[dict(active=0, buttons=buttons, x=0.15, y=1.15, pad={"r": 10, "t": 10})],
-        title=f"Alertas Críticas PML - Nodo {nodos[0]}",
+        updatemenus=[dict(active=0, buttons=buttons, x=0.0, y=1.15, pad={"r": 10, "t": 10})],
+        title="Promedio PML y Alertas - Zona de Carga Monclova",
         xaxis_title="Fecha", yaxis_title="Precio PML (MXN/MWh)",
-        template="plotly_white"
+        template="plotly_white",
+        showlegend=True
     )
+    
     fig.write_html(output_path)
+
+def generar_vista_global_heatmap(df_maestro):
+    # Filtramos críticas y extraemos el formato Mes-Año
+    df_criticas = df_maestro[df_maestro['alerta_critica'] == 1].copy()
+    df_criticas['mes_anio'] = df_criticas['fecha_hora'].dt.strftime('%Y-%m')
+    
+    # Contamos cuántas anomalías hubo por nodo y por mes
+    tabla_calor = df_criticas.groupby(['nodo', 'mes_anio']).size().reset_index(name='conteo')
+    
+    # Convertimos la tabla a formato matriz (pivote) para el heatmap
+    matriz_calor = tabla_calor.pivot(index='nodo', columns='mes_anio', values='conteo').fillna(0)
+    
+    fig = px.imshow(
+        matriz_calor, 
+        color_continuous_scale="YlOrRd", # De amarillo a rojo
+        title="Termómetro de Riesgo: Frecuencia Mensual de Alertas Críticas",
+        labels=dict(x="Mes", y="Nodo", color="N° Alertas")
+    )
+    
+    fig.update_layout(template="plotly_white")
+    fig.write_html('reports/vista_global_heatmap.html')
+
+
+def generar_vista_global_carriles(df_maestro):
+    # Filtramos solo las anomalías críticas de toda la red
+    df_criticas = df_maestro[df_maestro['alerta_critica'] == 1]
+    
+    fig = px.scatter(
+        df_criticas, 
+        x="fecha_hora", 
+        y="nodo",           # Cada nodo tiene su carril
+        size="pml",         # El tamaño del punto depende del precio
+        color="pml",        # El color (de amarillo a rojo oscuro) depende del precio
+        color_continuous_scale="Reds",
+        title="Mapa Operativo Global: Alertas Críticas en la Red Monclova",
+        labels={"nodo": "Zona de Carga (Nodo)", "fecha_hora": "Línea de Tiempo", "pml": "PML (MXN)"}
+    )
+    
+    fig.update_layout(template="plotly_white", height=500)
+    fig.write_html('reports/vista_global_carriles.html')
 
 # --- 3. PIPELINE PRINCIPAL (ORQUESTADOR) ---
 
@@ -188,7 +292,8 @@ def main():
     
     df_maestro[columnas_finales].to_csv('data/processed/resultado_anomalias.csv', index=False)
     generate_dashboard(df_maestro, 'reports/dashboard_anomalias.html')
-    
+    generar_vista_global_heatmap(df_maestro)
+    generar_vista_global_carriles(df_maestro)
     tiempo_total = (time.time() - tiempo_inicio) / 60
     print("="*50)
     print(f"[SUCCESS] Pipeline ejecutado en {tiempo_total:.2f} minutos.")
