@@ -37,6 +37,19 @@ Este proyecto utiliza uv como gestor de paquetes y entornos para garantizar la p
 ## **Uso del Pipeline**
 
 El pipeline incluye una Interfaz de Línea de Comandos (CLI) que permite interactuar directamente con el servicio SW-PML del CENACE o consumir un archivo local.  
+
+| Parámetro / Flag | Qué controla | Valor por Defecto | Cuándo modificarlo |
+| :--- | :--- | :--- | :--- |
+| `--nodos` | Nodos o Zonas de Carga a extraer. Soporta múltiples valores mezclados. | `Monclova` | Cuando necesites analizar otras regiones o añadir nodos específicos (ej. `--nodos Huasteca 06AEO-115`). |
+| `--fecha-inicio` / `--fecha-fin` | Rango de fechas para la extracción (formato `AAAA-MM-DD`). | `2024-01-01` / `2025-06-30` | En ejecuciones periódicas. Por ejemplo, en una corrida semanal solo pedirías los últimos 7 días. |
+| `--sistema` | Sistema Interconectado a consultar (`SIN`, `BCA`, `BCS`). | `SIN` | Únicamente si el análisis se expande a la red de Baja California. |
+| `--proceso` | Tipo de mercado a consultar: `MDA` (Día en Adelanto) o `MTR` (Tiempo Real). | `MDA` | Para precios en tiempo real. **Nota:** Los datos `MTR` tienen un rezago de publicación de ~7 días por parte del CENACE. |
+| `--zscore-umbral` | Desviaciones estándar requeridas para marcar una anomalía. | `3.0` | Para ajustar la sensibilidad del modelo móvil según se observe en las métricas. |
+| `--iforest-contamination` | Proporción esperada de anomalías en el dataset. | `0.01` (1%) | Si consideras que hay más o menos del 1% de anomalías reales en tus datos. |
+| `--iqr-multiplicador` | Amplitud del rango histórico normal antes de marcar un outlier. | `3.0` | Para endurecer o relajar la detección estática de picos extremos. |
+| `--usar-csv-local` | Ruta a un dataset local. Al usarse, **omite las llamadas a la API**. | *Ninguno* | Para iteración rápida durante el desarrollo o pruebas locales. |
+| `--catalogo` | Ruta al archivo CSV del catálogo de nodos. | `catalog/nodos_catalogo.csv` | Solo si modificas la estructura de directorios del repositorio. |
+
 Para ejecutar el pipeline utilizando un dataset local (modo recomendado para CI/CD y evaluación rápida):  
 uv run python src/pp\_ds\_monclovalmp/main.py \--usar-csv-local data/raw/monclova\_pml\_2024\_2025.csv
 
