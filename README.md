@@ -1,4 +1,4 @@
-# **Arkham Data Science Challenge: Anomalías PML \- Zona Monclova**
+# **Data Science Challenge: Anomalías PML \- Zona Monclova**
 
 Este repositorio contiene un pipeline ETL de producción diseñado para la extracción, transformación, detección de anomalías y visualización de los Precios Marginales Locales (PML) del Mercado Eléctrico Mayorista (CENACE).  
 El proyecto fue construido con un enfoque de ingeniería de software y ciencia de datos, garantizando modularidad, resiliencia ante fallos de red y reproducibilidad estricta.
