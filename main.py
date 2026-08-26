@@ -55,7 +55,7 @@ class PipelineConfig:
     max_nodos_por_request: int = 20  # límite documentado del SW-PML
     max_dias_por_request: int = 7    # límite documentado del SW-PML
     request_timeout_s: int = 30
-    request_sleep_s: float = 2.0     # cortesía entre requests
+    request_sleep_s: float = 1.0     # cortesía entre requests
     max_reintentos: int = 3
 
     # Umbrales de los métodos de detección
@@ -224,6 +224,7 @@ def extract_cenace_data(config: PipelineConfig, nodo_bloques: list[list[str]]) -
     chunks_sin_contenido = []
 
     for bloque_idx, nodos in enumerate(nodo_bloques, start=1):
+        nodos_esperados = set(nodos)
         urls = getRequestURLs(
             config.fecha_inicio, config.fecha_fin, nodos,
             sistema=config.sistema, proceso=config.proceso, formato=config.formato,
@@ -260,9 +261,27 @@ def extract_cenace_data(config: PipelineConfig, nodo_bloques: list[list[str]]) -
                 logger.warning(f"status inesperado '{status}' en {url}; se intenta procesar de todas formas")
 
             df_chunk = flattenData(payload)
-            if not df_chunk.empty:
-                lista_chunks.append(df_chunk)
 
+            # status == OK solo confirma que la petición se procesó bien, NO que
+            # todos los nodos solicitados vinieron con datos. Comparamos
+            # explícitamente contra lo que se pidió en este bloque.
+            if df_chunk.empty:
+                logger.warning(
+                    f"status='{status}' pero no llegó ningún dato para ninguno de los "
+                    f"nodos solicitados en {url}: {sorted(nodos_esperados)}"
+                )
+                chunks_sin_contenido.append(url)
+                continue
+
+            nodos_recibidos = set(df_chunk['nodo'].unique())
+            nodos_faltantes = nodos_esperados - nodos_recibidos
+            if nodos_faltantes:
+                logger.warning(
+                    f"status='{status}' pero faltaron datos de {sorted(nodos_faltantes)} "
+                    f"en {url} (sí llegaron: {sorted(nodos_recibidos)})"
+                )
+
+            lista_chunks.append(df_chunk)
             time.sleep(config.request_sleep_s)
 
     logger.info(
@@ -500,6 +519,7 @@ def main() -> None:
                 f"sistema={config.sistema} proceso={config.proceso}")
     logger.info("=" * 50)
     tiempo_inicio = time.time()
+    sufijo_fecha = datetime.now().strftime("%d%m%Y")
 
     os.makedirs(config.output_dir_data, exist_ok=True)
     os.makedirs(config.output_dir_reports, exist_ok=True)
@@ -544,7 +564,7 @@ def main() -> None:
 
     logger.info("[3/4] Calculando métricas de evaluación...")
     df_metricas = compute_evaluation_metrics(df_maestro)
-    metricas_path = os.path.join(config.output_dir_data, 'metricas_evaluacion.csv')
+    metricas_path = os.path.join(config.output_dir_data, f'metricas_evaluacion_{sufijo_fecha}.csv')
     df_metricas.to_csv(metricas_path, index=False)
     logger.info(f"Métricas exportadas a {metricas_path}")
     logger.info("\n" + df_metricas.to_string(index=False))
@@ -556,12 +576,12 @@ def main() -> None:
         'anom_zscore', 'anom_isotree', 'anom_iqr', 'alerta_critica'
     ]
     df_maestro[columnas_finales].to_csv(
-        os.path.join(config.output_dir_data, 'resultado_anomalias.csv'), index=False
+        os.path.join(config.output_dir_data, f'resultado_anomalias_{sufijo_fecha}.csv'), index=False
     )
 
-    generate_dashboard(df_maestro, os.path.join(config.output_dir_reports, 'dashboard_anomalias.html'))
-    generar_vista_global_heatmap(df_maestro, os.path.join(config.output_dir_reports, 'vista_global_heatmap.html'))
-    generar_vista_global_carriles(df_maestro, os.path.join(config.output_dir_reports, 'vista_global_carriles.html'))
+    generate_dashboard(df_maestro, os.path.join(config.output_dir_reports, f'dashboard_anomalias_{sufijo_fecha}.html'))
+    generar_vista_global_heatmap(df_maestro, os.path.join(config.output_dir_reports, f'vista_global_heatmap_{sufijo_fecha}.html'))
+    generar_vista_global_carriles(df_maestro, os.path.join(config.output_dir_reports, f'vista_global_carriles_{sufijo_fecha}.html'))
 
     tiempo_total = (time.time() - tiempo_inicio) / 60
     logger.info("=" * 50)
