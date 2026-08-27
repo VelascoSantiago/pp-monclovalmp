@@ -1,13 +1,18 @@
-# Outputs generados por el pipeline (se regeneran en cada corrida)
-data/processed/*.csv
-reports/*.html
-
-# Dataset local de prueba/producción (pesado, no debe vivir en git)
-monclova_pml_2024_2025.csv
-*.csv
-!catalog/nodos_catalogo.csv
-
-# Entorno virtual
+# Python y Entornos Virtuales
 .venv/
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+
+# Logs de Producción
+logs/*.log
+
+# Datos (Crudos y Procesados)
+data/raw/*.csv
+data/processed/*.csv
+*.csv
+!catalog/nodos_catalogo.csv
+
+# Reportes y Dashboards
+reports/*.html
