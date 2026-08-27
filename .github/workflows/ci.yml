@@ -26,3 +26,8 @@ jobs:
         
       - name: Correr pruebas unitarias (Pytest)
         run: uv run pytest tests/
+
+      - name: Correr pruebas unitarias (Pytest)
+              env:
+                PYTHONPATH: .
+              run: uv run pytest tests/
