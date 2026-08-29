@@ -384,7 +384,7 @@ def generate_dashboard(df: pd.DataFrame, output_path: str) -> None:
 
     fig.add_trace(go.Scatter(
         x=global_df['fecha_hora'], y=global_df['pml'], mode='lines',
-        name='Monclova Grid Average', line=dict(color='gray', width=1.5),
+        name='Monclova Grid Average', line=dict(color='gray', width=1.5), # hardcoding issues
         visible=True
     ))
 
