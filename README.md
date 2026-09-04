@@ -40,21 +40,21 @@ The pipeline includes a Command Line Interface (CLI) that allows you to interact
 
 | Parameter / Flag | What it controls | Default Value | When to modify it |
 | :--- | :--- | :--- | :--- |
-| `--nodos` | Nodes or Load Zones to extract. Supports multiple mixed values. | `Monclova` | When you need to analyze other regions or add specific nodes (e.g., `--nodos Huasteca 06AEO-115`). |
-| `--fecha-inicio` / `--fecha-fin` | Date range for extraction (`YYYY-MM-DD` format). | `2024-01-01` / `2025-06-30` | In periodic runs. For example, a weekly run would only request the last 7 days. |
-| `--sistema` | Interconnected System to query (`SIN`, `BCA`, `BCS`). | `SIN` | Only if the analysis expands to the Baja California grid. |
-| `--proceso` | Market type to query: `MDA` (Day-Ahead) or `MTR` (Real-Time). | `MDA` | For real-time prices. **Note:** `MTR` data has a publishing lag of ~7 days by CENACE. |
-| `--zscore-umbral` | Standard deviations required to flag an anomaly. | `3.0` | To adjust the sensitivity of the rolling model based on observed metrics. |
+| `--nodes` | Nodes or Load Zones to extract. Supports multiple mixed values. | `Monclova` | When you need to analyze other regions or add specific nodes (e.g., `--nodes Huasteca 06AEO-115`). |
+| `--start-date` / `--end-date` | Date range for extraction (`YYYY-MM-DD` format). | `2024-01-01` / `2025-06-30` | In periodic runs. For example, a weekly run would only request the last 7 days. |
+| `--system` | Interconnected System to query (`SIN`, `BCA`, `BCS`). | `SIN` | Only if the analysis expands to the Baja California grid. |
+| `--process` | Market type to query: `MDA` (Day-Ahead) or `MTR` (Real-Time). | `MDA` | For real-time prices. **Note:** `MTR` data has a publishing lag of ~7 days by CENACE. |
+| `--zscore-threshold` | Standard deviations required to flag an anomaly. | `3.0` | To adjust the sensitivity of the rolling model based on observed metrics. |
 | `--iforest-contamination` | Expected proportion of anomalies in the dataset. | `0.01` (1%) | If you consider there are more or less than 1% of true anomalies in your data. |
-| `--iqr-multiplicador` | Width of the normal historical range before marking an outlier. | `3.0` | To tighten or loosen the static detection of extreme spikes. |
-| `--usar-csv-local` | Path to a local dataset. When used, **it skips API calls**. | *None* | For rapid iteration during development or local testing. |
-| `--catalogo` | Path to the node catalog CSV file. | `catalog/nodos_catalogo.csv` | Only if you modify the repository's directory structure. |
+| `--iqr-multiplier` | Width of the normal historical range before marking an outlier. | `3.0` | To tighten or loosen the static detection of extreme spikes. |
+| `--use-local-csv` | Path to a local dataset. When used, **it skips API calls**. | *None* | For rapid iteration during development or local testing. |
+| `--catalog` | Path to the node catalog CSV file. | `catalog/nodos_catalogo.csv` | Only if you modify the repository's directory structure. |
 
 To run the pipeline using a local dataset (recommended mode for CI/CD and rapid evaluation):
-uv run python src/pp_ds_monclovalmp/main.py --usar-csv-local data/raw/monclova_pml_2024_2025.csv
+uv run python src/pp_ds_monclovalmp/main.py --use-local-csv data/raw/monclova_pml_2024_2025.csv
 
 To extract live data by querying the API for the entire Monclova zone over a date range:
-uv run python src/pp_ds_monclovalmp/main.py --nodos Monclova --fecha-inicio 2024-01-01 --fecha-fin 2025-06-30
+uv run python src/pp_ds_monclovalmp/main.py --nodes Monclova --start-date 2024-01-01 --end-date 2025-06-30
 
 To view model configuration parameters (thresholds, windows) and API options:
 uv run python src/pp_ds_monclovalmp/main.py --help

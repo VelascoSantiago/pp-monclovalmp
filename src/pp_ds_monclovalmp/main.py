@@ -292,7 +292,6 @@ def extract_cenace_data(config: PipelineConfig, node_blocks: list[list[str]]) ->
 
     if not chunk_list:
         raise RuntimeError("Extraction returned no usable data. Check the error log above.")
-        sys.exit(1)
 
     return pd.concat(chunk_list, ignore_index=True)
 
@@ -372,7 +371,11 @@ def compute_evaluation_metrics(master_df: pd.DataFrame) -> pd.DataFrame:
 
 # --- 5. REPORTING MODULE ---
 
-def generate_dashboard(df: pd.DataFrame, output_path: str) -> None:
+def node_label(node: str, node_to_zone: dict[str, str]) -> str:
+    zone = node_to_zone.get(node, "Unknown Zone")
+    return f"{node} ({zone})"
+
+def generate_dashboard(df: pd.DataFrame, output_path: str, node_to_zone: dict[str, str]) -> None:
     """Generates an interactive HTML dashboard with a global averaged view and node breakdown."""
     fig = go.Figure()
     nodes = df['nodo'].unique()
@@ -384,7 +387,7 @@ def generate_dashboard(df: pd.DataFrame, output_path: str) -> None:
 
     fig.add_trace(go.Scatter(
         x=global_df['fecha_hora'], y=global_df['pml'], mode='lines',
-        name='Monclova Grid Average', line=dict(color='gray', width=1.5), # hardcoding issues
+        name='Grid Average', line=dict(color='gray', width=1.5), # hardcoding issues
         visible=True
     ))
 
@@ -434,7 +437,7 @@ def generate_dashboard(df: pd.DataFrame, output_path: str) -> None:
     buttons.append(dict(
         label="Global View (Average)",
         method="update",
-        args=[{"visible": vis_global}, {"title": "PML Average and Alerts - Monclova Load Zone"}]
+        args=[{"visible": vis_global}, {"title": "PML Average and Alerts"}]
     ))
 
     for i, node in enumerate(nodes):
@@ -442,15 +445,16 @@ def generate_dashboard(df: pd.DataFrame, output_path: str) -> None:
         for j in range(traces_per_node):
             visibility[2 + (i * traces_per_node) + j] = True
 
+        label = node_label(node, node_to_zone) 
         buttons.append(dict(
-            label=f"Detail: {node}",
+            label=f"Detail: {label}",
             method="update",
-            args=[{"visible": visibility}, {"title": f"Analytical Trident Breakdown - Node {node}"}]
+            args=[{"visible": visibility}, {"title": f"Analytical Trident Breakdown - Node {label}"}]
         ))
 
     fig.update_layout(
         updatemenus=[dict(active=0, buttons=buttons, x=0.0, y=1.15, pad={"r": 10, "t": 10})],
-        title="PML Average and Alerts - Monclova Load Zone",
+        title="PML Average and Alerts",
         xaxis_title="Date", yaxis_title="PML Price (MXN/MWh)",
         template="plotly_white",
         showlegend=True
@@ -459,12 +463,13 @@ def generate_dashboard(df: pd.DataFrame, output_path: str) -> None:
     fig.write_html(output_path)
 
 
-def generate_global_heatmap_view(master_df: pd.DataFrame, output_path: str) -> None:
+def generate_global_heatmap_view(master_df: pd.DataFrame, output_path: str, node_to_zone: dict[str, str]) -> None:
     critical_df = master_df[master_df['critical_alert'] == 1].copy()
     critical_df['month_year'] = critical_df['fecha_hora'].dt.strftime('%Y-%m')
+    critical_df['node_label'] = critical_df['nodo'].map(lambda n: node_label(n, node_to_zone))
 
-    heatmap_table = critical_df.groupby(['nodo', 'month_year']).size().reset_index(name='count')
-    heatmap_matrix = heatmap_table.pivot(index='nodo', columns='month_year', values='count').fillna(0)
+    heatmap_table = critical_df.groupby(['node_label', 'month_year']).size().reset_index(name='count')
+    heatmap_matrix = heatmap_table.pivot(index='node_label', columns='month_year', values='count').fillna(0)
 
     fig = px.imshow(
         heatmap_matrix,
@@ -477,18 +482,18 @@ def generate_global_heatmap_view(master_df: pd.DataFrame, output_path: str) -> N
     fig.write_html(output_path)
 
 
-def generate_global_lanes_view(master_df: pd.DataFrame, output_path: str) -> None:
-    critical_df = master_df[master_df['critical_alert'] == 1]
-
+def generate_global_lanes_view(master_df: pd.DataFrame, output_path: str, node_to_zone: dict[str, str]) -> None:
+    critical_df = master_df[master_df['critical_alert'] == 1].copy()
+    critical_df['node_label'] = critical_df['nodo'].map(lambda n: node_label(n, node_to_zone))
     fig = px.scatter(
         critical_df,
         x="fecha_hora",
-        y="nodo",
+        y="node_label",
         size="pml",
         color="pml",
         color_continuous_scale="Reds",
-        title="Global Operational Map: Critical Alerts in Monclova Grid",
-        labels={"nodo": "Load Zone (Node)", "fecha_hora": "Timeline", "pml": "PML (MXN)"}
+        title="Global Operational Map: Critical Alerts",
+        labels={"node_label": "Load Zone (Node)", "fecha_hora": "Timeline", "pml": "PML (MXN)"}
     )
 
     fig.update_layout(template="plotly_white", height=500)
@@ -519,11 +524,14 @@ def main() -> None:
             logger.info(f"Using local CSV: {config.local_csv_override} ({len(raw_df)} rows)")
         except FileNotFoundError:
             logger.error(f"CSV file not found: {config.local_csv_override}")
-            sys.exit(1) # <--- AQUÍ
+            sys.exit(1)
+        catalog = load_node_catalog(config.catalog_nodes_path)
     else:
         catalog = load_node_catalog(config.catalog_nodes_path)
         node_blocks = resolve_nodes(config.nodes_input, catalog, config.max_nodes_per_request)
         raw_df = extract_cenace_data(config, node_blocks)
+
+    node_to_zone = catalog.set_index("clave")["zona_carga"].to_dict()  
 
     raw_df['fecha'] = pd.to_datetime(raw_df['fecha'], format='%Y-%m-%d')
     raw_df['hora'] = raw_df['hora'].astype(int) - 1
@@ -567,9 +575,9 @@ def main() -> None:
         os.path.join(config.output_dir_data, f'anomaly_results_{date_suffix}.csv'), index=False
     )
 
-    generate_dashboard(master_df, os.path.join(config.output_dir_reports, f'anomaly_dashboard_{date_suffix}.html'))
-    generate_global_heatmap_view(master_df, os.path.join(config.output_dir_reports, f'global_heatmap_view_{date_suffix}.html'))
-    generate_global_lanes_view(master_df, os.path.join(config.output_dir_reports, f'global_lanes_view_{date_suffix}.html'))
+    generate_dashboard(master_df, os.path.join(config.output_dir_reports, f'anomaly_dashboard_{date_suffix}.html'), node_to_zone)
+    generate_global_heatmap_view(master_df, os.path.join(config.output_dir_reports, f'global_heatmap_view_{date_suffix}.html'), node_to_zone)
+    generate_global_lanes_view(master_df, os.path.join(config.output_dir_reports, f'global_lanes_view_{date_suffix}.html'), node_to_zone)
 
     total_time = (time.time() - start_time) / 60
     logger.info("=" * 50)
